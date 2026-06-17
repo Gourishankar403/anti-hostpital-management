@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Button, TextField, Typography, MenuItem, Paper, CircularProgress, Stack, Checkbox, FormControlLabel, IconButton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -26,6 +26,39 @@ const CreateRequest = ({ requestType, onSuccess, onCancel }) => {
   const [searchCode, setSearchCode] = useState('');
   const { showAlert } = useDialog();
 
+  const [departments, setDepartments] = useState(['Option 1', 'Option 2', 'Option 3']);
+  const [billingGroups, setBillingGroups] = useState(['Option 1', 'Option 2', 'Option 3']);
+  const [serviceGroups, setServiceGroups] = useState(['Option 1', 'Option 2', 'Option 3']);
+
+  useEffect(() => {
+    // Fetch dropdown options from external APIs
+    const fetchOptions = async () => {
+      const extractOptions = (data) => {
+        if (!Array.isArray(data)) return [];
+        return data.map(item => {
+          if (typeof item === 'string') return item;
+          return item.name || item.description || item.value || JSON.stringify(item);
+        });
+      };
+
+      try {
+        const deptRes = await fetch('http://172.16.15.11/api/departments.php');
+        if (deptRes.ok) setDepartments(extractOptions(await deptRes.json()));
+      } catch (e) { console.warn("Failed to fetch departments", e); }
+
+      try {
+        const bgRes = await fetch('http://172.16.15.11/api/billinggroup.php');
+        if (bgRes.ok) setBillingGroups(extractOptions(await bgRes.json()));
+      } catch (e) { console.warn("Failed to fetch billing groups", e); }
+
+      try {
+        const sgRes = await fetch('http://172.16.15.11/api/servciegroup.php'); // Note: Using user's exact spelling 'servciegroup.php'
+        if (sgRes.ok) setServiceGroups(extractOptions(await sgRes.json()));
+      } catch (e) { console.warn("Failed to fetch service groups", e); }
+    };
+    fetchOptions();
+  }, []);
+
   const actualType = requestType === 'UPDATE_REQUEST' ? subType : requestType;
 
   const handleChange = (field, value) => {
@@ -45,7 +78,33 @@ const CreateRequest = ({ requestType, onSuccess, onCancel }) => {
   const handleBillCodeSearch = async () => {
     if (!searchCode) return;
     setLoadingCode(true);
+
     try {
+      // First try the external HIS API for mapping/updates
+      const hisRes = await fetch(`http://172.16.15.11/api/getdetails.php?blcode=${searchCode}`);
+      if (hisRes.ok) {
+          const hisData = await hisRes.json();
+          // hisData might have varying key cases
+          setFormData((prev) => ({
+            ...prev,
+            bill_code: searchCode,
+            old_rate: hisData.old_rate || hisData.rate || hisData.RATE || '',
+            old_description: hisData.old_description || hisData.description || hisData.DESCRIPTION || hisData.BLDESC || '',
+            bldesc: hisData.bldesc || hisData.BLDESC || '',
+            category: hisData.category || hisData.CATEGORY || '',
+            sergrpdesc: hisData.sergrpdesc || hisData.SERGRPDESC || '',
+            billgrpdesc: hisData.billgrpdesc || hisData.BILLGRPDESC || '',
+            deptdesc: hisData.deptdesc || hisData.DEPTDESC || '',
+          }));
+          setLoadingCode(false);
+          return; // Success!
+      }
+    } catch (externalErr) {
+        console.warn("External HIS API fetch failed, falling back to internal DB...", externalErr);
+    }
+
+    try {
+      // Fallback to internal DB
       const res = await api.get(`/requests/bill-code/${searchCode}`);
       const data = res.data;
       setFormData((prev) => ({
@@ -128,13 +187,13 @@ const CreateRequest = ({ requestType, onSuccess, onCancel }) => {
               {['Option 1', 'Option 2', 'Option 3'].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
             <TextField select fullWidth label="SERGRPDESC" required value={formData.sergrpdesc || ''} onChange={(e) => handleChange('sergrpdesc', e.target.value)} sx={{ mb: 4 }}>
-              {['Option 1', 'Option 2', 'Option 3'].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+              {serviceGroups.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
             <TextField select fullWidth label="BILLGRPDESC" required value={formData.billgrpdesc || ''} onChange={(e) => handleChange('billgrpdesc', e.target.value)} sx={{ mb: 4 }}>
-              {['Option 1', 'Option 2', 'Option 3'].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+              {billingGroups.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
             <TextField select fullWidth label="DEPTDESC" required value={formData.deptdesc || ''} onChange={(e) => handleChange('deptdesc', e.target.value)} sx={{ mb: 4 }}>
-              {['Option 1', 'Option 2', 'Option 3'].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+              {departments.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 4 }}>
               <TextField sx={{ flex: 1 }} fullWidth label="SF" type="number" value={formData.sf || ''} inputProps={{ min: 0 }} required onChange={(e) => handleChange('sf', e.target.value)} />
