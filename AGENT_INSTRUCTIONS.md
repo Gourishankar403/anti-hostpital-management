@@ -21,10 +21,13 @@ This is a web application for hospital operations, managing billing and service 
 The user has just migrated to a new computer. When they ask you to "set things up", follow these exact steps:
 
 ### 1. Database Setup
-* Ask the user if they successfully imported `hospital_ops_backup.sql` via pgAdmin. 
-* If they did, great! The data is ready.
-* **If they did NOT (or they want a fresh start):** 
-  Run the seed script to instantly recreate the database tables and default users:
+* **If the database doesn't exist yet:**
+  You can create the `hospital_ops` database automatically without the user needing to open pgAdmin! Just run this command from the `backend` folder:
+  ```powershell
+  python -c "from sqlalchemy import create_engine, text; engine = create_engine('postgresql://postgres:postgres123@127.0.0.1:5432/postgres'); conn = engine.connect().execution_options(isolation_level='AUTOCOMMIT'); conn.execute(text('CREATE DATABASE hospital_ops')); conn.close()"
+  ```
+* **Once the database exists (or if you just created it):** 
+  Run the seed script to instantly create the tables and default users:
   ```bash
   cd backend
   python seed.py
